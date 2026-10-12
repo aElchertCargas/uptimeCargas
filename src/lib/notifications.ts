@@ -183,7 +183,7 @@ function buildAdaptiveCard(payload: NotificationPayload) {
     { title: "Monitor", value: payload.monitorName },
     {
       title: "URL",
-      value: `[${payload.monitorUrl}](${payload.monitorUrl})`,
+      value: payload.monitorUrl,
     },
     { title: "Status", value: payload.status.toUpperCase() },
     { title: "Time", value: estTime },
@@ -200,36 +200,28 @@ function buildAdaptiveCard(payload: NotificationPayload) {
   ];
 
   return {
-    type: "message",
-    attachments: [
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
       {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-          type: "AdaptiveCard",
-          version: "1.4",
-          body: [
-            {
-              type: "TextBlock",
-              size: "medium",
-              weight: "bolder",
-              text: payload.status === "ssl_expiring"
-                ? `${icon} ${payload.monitorName} SSL Certificate Expiring`
-                : `${icon} ${payload.monitorName} is ${payload.status.toUpperCase()}`,
-              color,
-            },
-            {
-              type: "FactSet",
-              facts,
-            },
-            {
-              type: "TextBlock",
-              text: payload.message,
-              wrap: true,
-              spacing: "small",
-            },
-          ],
-        },
+        type: "TextBlock",
+        size: "medium",
+        weight: "bolder",
+        text: payload.status === "ssl_expiring"
+          ? `${icon} ${payload.monitorName} SSL Certificate Expiring`
+          : `${icon} ${payload.monitorName} is ${payload.status.toUpperCase()}`,
+        color,
+      },
+      {
+        type: "FactSet",
+        facts,
+      },
+      {
+        type: "TextBlock",
+        text: payload.message,
+        wrap: true,
+        spacing: "small",
       },
     ],
   };

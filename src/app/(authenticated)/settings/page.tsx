@@ -158,20 +158,14 @@ async function fetchPatterns(): Promise<ExcludedPattern[]> {
 // ─── Channel Form ────────────────────────────────────────────────────────────
 
 const DEFAULT_TEAMS_BODY = `{
-  "type": "message",
-  "attachments": [{
-    "contentType": "application/vnd.microsoft.card.adaptive",
-    "content": {
-      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-      "type": "AdaptiveCard",
-      "version": "1.4",
-      "body": [
-        { "type": "TextBlock", "weight": "bolder", "text": "{{monitorName}} is {{status}}" },
-        { "type": "FactSet", "facts": [{ "title": "URL", "value": "[{{monitorUrl}}]({{monitorUrl}})" }] },
-        { "type": "TextBlock", "text": "{{message}}", "wrap": true }
-      ]
-    }
-  }]
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.4",
+  "body": [
+    { "type": "TextBlock", "weight": "bolder", "text": "{{monitorName}} is {{status}}" },
+    { "type": "FactSet", "facts": [{ "title": "URL", "value": "{{monitorUrl}}" }] },
+    { "type": "TextBlock", "text": "{{message}}", "wrap": true }
+  ]
 }`;
 
 function ChannelForm({

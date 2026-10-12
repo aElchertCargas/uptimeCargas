@@ -101,3 +101,42 @@ test("up webhook includes Zendesk metadata in the JSON payload", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("Teams adaptive card is sent as the request root", async () => {
+  const { sendTeams } = await loadModule();
+  const originalFetch = global.fetch;
+  const requests: Array<{ body: string }> = [];
+
+  global.fetch = async (_input, init) => {
+    requests.push({ body: String(init?.body ?? "") });
+    return new Response(null, { status: 200 });
+  };
+
+  try {
+    const result = await sendTeams(
+      {
+        url: "https://example.environment.api.powerplatform.com/webhook",
+        bodyType: "adaptive-card",
+      },
+      {
+        monitorName: "Example Monitor",
+        monitorUrl: "https://example.com",
+        status: "down",
+        message: "HTTP 500",
+        timestamp: "2026-09-28T15:26:00.000Z",
+      }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(requests.length, 1);
+
+    const body = JSON.parse(requests[0]?.body ?? "{}");
+    assert.equal(body.type, "AdaptiveCard");
+    assert.equal(body.$schema, "http://adaptivecards.io/schemas/adaptive-card.json");
+    assert.ok(Array.isArray(body.body));
+    assert.equal(body.attachments, undefined);
+    assert.equal(body.body[1].facts[1].value, "https://example.com");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
