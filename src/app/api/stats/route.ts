@@ -11,6 +11,9 @@ const MAX_EVENTS = 10;
 
 type SlotState = "up" | "down" | "none";
 
+// Monitors on these hosts never show SSL expiry on the dashboard.
+const SSL_HIDDEN_URL_PATTERN = /silverlinevps\.com/i;
+
 export async function GET() {
   const unauthorized = await requireSession();
   if (unauthorized) return unauthorized;
@@ -109,7 +112,9 @@ export async function GET() {
       lastCheckedAt: m.lastCheckedAt?.toISOString() ?? null,
       uptime24h: m.uptime24h,
       avgResponseTime: m.avgResponseTime24h,
-      sslExpiresAt: m.sslExpiresAt?.toISOString() ?? null,
+      sslExpiresAt: SSL_HIDDEN_URL_PATTERN.test(m.url)
+        ? null
+        : m.sslExpiresAt?.toISOString() ?? null,
       suppressedDownAt: m.suppressedDownAt?.toISOString() ?? null,
       suppressedDownMessage: m.suppressedDownMessage,
       downSince: incident?.startedAt.toISOString() ?? null,

@@ -3,6 +3,78 @@ import { withAdvisoryLock } from "@/lib/postgres-lock";
 import { runCleanupCycle } from "@/lib/run-cleanup";
 import { runSslCheckCycle } from "@/lib/run-ssl-check";
 
+export type SchedulerJobName = "check" | "ssl" | "cleanup";
+
+export interface SchedulerJobState {
+  intervalMs: number;
+  nextRunAt: number | null;
+  running: boolean;
+  lastStartedAt: number | null;
+  lastFinishedAt: number | null;
+  lastDurationMs: number | null;
+  lastError: string | null;
+  runs: number;
+  failures: number;
+}
+
+// Shared via globalThis so API routes see the same state as the scheduler
+// even when Next bundles them as separate modules.
+const globalState = globalThis as unknown as {
+  __schedulerJobs?: Record<SchedulerJobName, SchedulerJobState>;
+  __schedulerStartedAt?: number | null;
+};
+
+function newJobState(intervalMs: number): SchedulerJobState {
+  return {
+    intervalMs,
+    nextRunAt: null,
+    running: false,
+    lastStartedAt: null,
+    lastFinishedAt: null,
+    lastDurationMs: null,
+    lastError: null,
+    runs: 0,
+    failures: 0,
+  };
+}
+
+const jobStates: Record<SchedulerJobName, SchedulerJobState> =
+  (globalState.__schedulerJobs ??= {
+    check: newJobState(60_000),
+    ssl: newJobState(24 * 60 * 60 * 1000),
+    cleanup: newJobState(24 * 60 * 60 * 1000),
+  });
+
+export function getSchedulerJobStates() {
+  return {
+    jobs: jobStates,
+    startedAt: globalState.__schedulerStartedAt ?? null,
+  };
+}
+
+async function tracked(
+  name: SchedulerJobName,
+  fn: () => Promise<string | void>
+) {
+  const state = jobStates[name];
+  state.running = true;
+  state.lastStartedAt = Date.now();
+  state.nextRunAt = state.lastStartedAt + state.intervalMs;
+  try {
+    const error = await fn();
+    state.lastError = error ?? null;
+    if (error) state.failures++;
+  } catch (error) {
+    state.lastError = error instanceof Error ? error.message : String(error);
+    state.failures++;
+  } finally {
+    state.running = false;
+    state.runs++;
+    state.lastFinishedAt = Date.now();
+    state.lastDurationMs = state.lastFinishedAt - state.lastStartedAt;
+  }
+}
+
 let schedulerRunning = false;
 let checkIntervalId: ReturnType<typeof setInterval> | null = null;
 let sslIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -23,17 +95,29 @@ function getBaseUrl() {
 }
 
 async function runCheckCycle() {
-  try {
-    await fetch(`${getBaseUrl()}/api/cron/check`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ""}` },
-    });
-  } catch {
-    // Retry next cycle
-  }
+  await tracked("check", async () => {
+    try {
+      const res = await fetch(`${getBaseUrl()}/api/cron/check`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ""}` },
+      });
+      if (!res.ok) return `Check endpoint returned ${res.status}`;
+    } catch (error) {
+      // Retry next cycle
+      return error instanceof Error ? error.message : "Check request failed";
+    }
+  });
 }
 
 async function runInternalSslCycle() {
+  await tracked("ssl", runSslCycleBody);
+}
+
+async function runInternalCleanupCycle() {
+  await tracked("cleanup", runCleanupCycleBody);
+}
+
+async function runSslCycleBody(): Promise<string | void> {
   try {
     const lockResult = await withAdvisoryLock(4214003, runSslCheckCycle);
     if (!lockResult.acquired || !lockResult.result) return;
@@ -46,10 +130,11 @@ async function runInternalSslCycle() {
       error instanceof Error ? error.message : "Unknown SSL scheduler error";
     console.error(`[scheduler] SSL check failed: ${message}`);
     await writeDebugLog("ssl_error", "scheduler", null, message).catch(() => {});
+    return message;
   }
 }
 
-async function runInternalCleanupCycle() {
+async function runCleanupCycleBody(): Promise<string | void> {
   try {
     const lockResult = await withAdvisoryLock(4214004, runCleanupCycle);
     if (!lockResult.acquired || !lockResult.result) return;
@@ -64,12 +149,17 @@ async function runInternalCleanupCycle() {
     await writeDebugLog("cleanup_error", "scheduler", null, message).catch(
       () => {}
     );
+    return message;
   }
 }
 
 export function startScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
+  globalState.__schedulerStartedAt = Date.now();
+  jobStates.check.nextRunAt = Date.now() + CHECK_STARTUP_DELAY_MS;
+  jobStates.ssl.nextRunAt = Date.now() + SSL_STARTUP_DELAY_MS;
+  jobStates.cleanup.nextRunAt = Date.now() + CLEANUP_STARTUP_DELAY_MS;
 
   // Keep the main monitor loop inside the always-on Railway web instance.
   checkStartupTimeoutId = setTimeout(runCheckCycle, CHECK_STARTUP_DELAY_MS);
