@@ -3,6 +3,9 @@ import { requireSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   const patterns = await prisma.excludedPattern.findMany({
     orderBy: { pattern: "asc" },
   });

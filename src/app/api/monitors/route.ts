@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { validateMonitorInput } from "@/lib/validation";
 
 export async function GET() {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   const monitors = await prisma.monitor.findMany({
     include: {
       checks: {
