@@ -11,6 +11,9 @@ export interface CheckRecord {
 interface SaveCheckResultsOptions {
   // The scheduled cycle clears false-down suppression once a monitor is back up.
   clearSuppressionOnUp: boolean;
+  // When the cycle started; stored as lastCheckedAt so the next due check is
+  // measured from cycle start rather than from when the slowest check finished.
+  checkedAt: Date;
 }
 
 /**
@@ -19,7 +22,7 @@ interface SaveCheckResultsOptions {
  */
 export async function saveCheckResults(
   records: CheckRecord[],
-  { clearSuppressionOnUp }: SaveCheckResultsOptions
+  { clearSuppressionOnUp, checkedAt }: SaveCheckResultsOptions
 ): Promise<void> {
   if (records.length === 0) return;
 
@@ -36,7 +39,7 @@ export async function saveCheckResults(
     SET
       "lastStatus" = r.is_up,
       "lastResponseTime" = r.response_time,
-      "lastCheckedAt" = now() AT TIME ZONE 'UTC',
+      "lastCheckedAt" = ${checkedAt.toISOString()}::timestamptz AT TIME ZONE 'UTC',
       "uptime24h" = CASE
         WHEN s.total > 0 THEN (round(s.up_count * 10000.0 / s.total) / 100)::double precision
         ELSE NULL

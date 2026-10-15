@@ -31,6 +31,7 @@ async function runManualCheck(request: NextRequest) {
     );
   }
 
+  const startedAt = new Date();
   const monitors = await prisma.monitor.findMany({
     where: { id: { in: monitorIds } },
   });
@@ -61,7 +62,10 @@ async function runManualCheck(request: NextRequest) {
     }
   });
 
-  await saveCheckResults(pendingInserts, { clearSuppressionOnUp: false });
+  await saveCheckResults(pendingInserts, {
+    clearSuppressionOnUp: false,
+    checkedAt: startedAt,
+  });
 
   const zendeskSettings = await getZendeskSettings();
   const downProtection = await protectDownTransitionsForIncidentCreation(

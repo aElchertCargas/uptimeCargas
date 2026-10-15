@@ -13,6 +13,7 @@ import {
 import { saveCheckResults, type CheckRecord } from "@/lib/check-results";
 import { performCheck, runChecksInBatches } from "@/lib/checker";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { isMonitorDue } from "@/lib/monitor-schedule";
 import { withAdvisoryLock } from "@/lib/postgres-lock";
 import { prisma } from "@/lib/prisma";
 
@@ -29,11 +30,9 @@ export async function POST(request: NextRequest) {
       where: { active: true },
     });
 
-    const now = Date.now();
-    const dueMonitors = monitors.filter(
-      (monitor) =>
-        !monitor.lastCheckedAt ||
-        now - monitor.lastCheckedAt.getTime() >= monitor.interval * 1000
+    const cycleStartedAt = new Date();
+    const dueMonitors = monitors.filter((monitor) =>
+      isMonitorDue(monitor, cycleStartedAt.getTime())
     );
 
     const pendingInserts: CheckRecord[] = [];
@@ -62,7 +61,10 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    await saveCheckResults(pendingInserts, { clearSuppressionOnUp: true });
+    await saveCheckResults(pendingInserts, {
+      clearSuppressionOnUp: true,
+      checkedAt: cycleStartedAt,
+    });
 
     const zendeskSettings = await getZendeskSettings();
     const downProtection = await protectDownTransitionsForIncidentCreation(

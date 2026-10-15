@@ -1,3 +1,4 @@
+import { CHECK_INTERVAL_MS } from "@/lib/monitor-schedule";
 import { writeDebugLog } from "@/lib/notifications";
 import { withAdvisoryLock } from "@/lib/postgres-lock";
 import { runCleanupCycle } from "@/lib/run-cleanup";
@@ -11,7 +12,6 @@ let checkStartupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let sslStartupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let cleanupStartupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-const CHECK_INTERVAL_MS = 60_000;
 const DAILY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_STARTUP_DELAY_MS = 5_000;
 const SSL_STARTUP_DELAY_MS = 15_000;
