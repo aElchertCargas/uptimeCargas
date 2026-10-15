@@ -334,7 +334,7 @@ export default function SyncPage() {
       {data.toAdd.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="flex items-center gap-2 font-mono text-base">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <CheckCircle2 className="size-4 text-[var(--color-status-up)]" />
               New Customers to Add ({data.toAdd.length})
             </CardTitle>
@@ -426,7 +426,7 @@ export default function SyncPage() {
       {data.urlMismatches.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-mono text-base">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <RefreshCw className="size-4 text-amber-500" />
               URL Mismatches ({data.urlMismatches.length})
             </CardTitle>
@@ -512,7 +512,7 @@ export default function SyncPage() {
       {data.toDelete.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="flex items-center gap-2 font-mono text-base">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <AlertTriangle className="size-4 text-[var(--color-status-down)]" />
               Stale Monitors ({data.toDelete.length})
             </CardTitle>
@@ -605,7 +605,7 @@ export default function SyncPage() {
       {data.excluded.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-mono text-base">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <Ban className="size-4 text-[var(--color-status-pending)]" />
               Excluded by Pattern ({data.excluded.length})
             </CardTitle>

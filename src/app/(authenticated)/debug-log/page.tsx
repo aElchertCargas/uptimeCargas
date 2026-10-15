@@ -123,7 +123,7 @@ export default function DebugLogPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Debug Log</h1>
           <p className="text-sm text-muted-foreground">
-            Down/up events, webhook dispatches, and SSL certificate alerts
+            Down and up events, webhook dispatches, Zendesk tickets and SSL alerts. Refreshes every 15 seconds.
           </p>
         </div>
         <Button
@@ -137,7 +137,8 @@ export default function DebugLogPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <section className="rounded-xl border bg-card text-card-foreground shadow-sm">
+      <div className="flex flex-wrap gap-2 border-b px-6 py-4">
         {([
           "all",
           "down",
@@ -170,17 +171,17 @@ export default function DebugLogPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : logs.length === 0 ? (
-        <div className="flex h-48 items-center justify-center rounded-lg border border-border">
+        <div className="flex h-48 items-center justify-center">
           <p className="font-mono text-sm text-muted-foreground">
             {allLogs.length === 0 ? "No debug log entries yet" : "No entries match this filter"}
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border">
+        <div className="px-3">
           <Table>
             <TableHeader>
               <TableRow>
@@ -222,6 +223,12 @@ export default function DebugLogPage() {
           </Table>
         </div>
       )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-3 font-mono text-xs text-muted-foreground">
+          <span>Showing {logs.length} of {allLogs.length} entries</span>
+          <span>Newest first</span>
+        </div>
+      </section>
 
       {!data?.enabled && !isLoading && (
         <p className="text-center text-sm text-muted-foreground">
