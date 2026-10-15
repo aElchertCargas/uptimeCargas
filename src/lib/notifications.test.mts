@@ -140,3 +140,42 @@ test("Teams adaptive card is sent as the request root", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("Teams adaptive-card-message wraps the card in a message envelope", async () => {
+  const { sendTeams } = await loadModule();
+  const originalFetch = global.fetch;
+  const requests: Array<{ body: string }> = [];
+
+  global.fetch = async (_input, init) => {
+    requests.push({ body: String(init?.body ?? "") });
+    return new Response(null, { status: 202 });
+  };
+
+  try {
+    const result = await sendTeams(
+      {
+        url: "https://example.environment.api.powerplatform.com/webhook",
+        bodyType: "adaptive-card-message",
+      },
+      {
+        monitorName: "Example Monitor",
+        monitorUrl: "https://example.com",
+        status: "down",
+        message: "HTTP 500",
+        timestamp: "2026-09-28T15:26:00.000Z",
+      }
+    );
+
+    assert.equal(result.ok, true);
+    const body = JSON.parse(requests[0]?.body ?? "{}");
+    assert.equal(body.type, "message");
+    assert.equal(body.attachments.length, 1);
+    assert.equal(
+      body.attachments[0].contentType,
+      "application/vnd.microsoft.card.adaptive"
+    );
+    assert.equal(body.attachments[0].content.type, "AdaptiveCard");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

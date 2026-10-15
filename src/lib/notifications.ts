@@ -15,7 +15,7 @@ interface PushoverConfig {
 
 interface TeamsConfig {
   url: string;
-  bodyType: "adaptive-card" | "custom";
+  bodyType: "adaptive-card" | "adaptive-card-message" | "custom";
   customBody?: string;
   headers?: Record<string, string>;
 }
@@ -240,6 +240,17 @@ export async function sendTeams(
     let body: string;
     if (config.bodyType === "custom" && config.customBody) {
       body = interpolateTemplate(config.customBody, payload);
+    } else if (config.bodyType === "adaptive-card-message") {
+      body = JSON.stringify({
+        type: "message",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            contentUrl: null,
+            content: buildAdaptiveCard(payload),
+          },
+        ],
+      });
     } else {
       body = JSON.stringify(buildAdaptiveCard(payload));
     }

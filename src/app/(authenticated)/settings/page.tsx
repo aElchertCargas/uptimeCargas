@@ -61,7 +61,7 @@ interface PushoverConfig {
 
 interface TeamsConfig {
   url: string;
-  bodyType: "adaptive-card" | "custom";
+  bodyType: "adaptive-card" | "adaptive-card-message" | "custom";
   customBody?: string;
   headers?: Record<string, string>;
 }
@@ -224,7 +224,7 @@ function ChannelForm({
   // Teams fields
   const teamsConfig = channel?.type === "teams" ? (channel.config as TeamsConfig) : null;
   const [teamsUrl, setTeamsUrl] = useState(teamsConfig?.url ?? "");
-  const [teamsBodyType, setTeamsBodyType] = useState<"adaptive-card" | "custom">(
+  const [teamsBodyType, setTeamsBodyType] = useState<"adaptive-card" | "adaptive-card-message" | "custom">(
     teamsConfig?.bodyType ?? "adaptive-card"
   );
   const [teamsCustomBody, setTeamsCustomBody] = useState(
@@ -436,13 +436,14 @@ function ChannelForm({
             <Label>Request Body Type</Label>
             <Select
               value={teamsBodyType}
-              onValueChange={(v) => setTeamsBodyType(v as "adaptive-card" | "custom")}
+              onValueChange={(v) => setTeamsBodyType(v as "adaptive-card" | "adaptive-card-message" | "custom")}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="adaptive-card">Adaptive Card (default)</SelectItem>
+                <SelectItem value="adaptive-card-message">Adaptive Card in message envelope (Power Automate Workflows)</SelectItem>
                 <SelectItem value="custom">Custom Body</SelectItem>
               </SelectContent>
             </Select>
@@ -554,7 +555,12 @@ function getChannelDescription(channel: NotificationChannel): string {
       return `User: ${(channel.config as PushoverConfig).userKey.slice(0, 8)}…`;
     case "teams": {
       const tc = channel.config as TeamsConfig;
-      const bodyLabel = tc.bodyType === "custom" ? "Custom body" : "Adaptive Card";
+      const bodyLabel =
+        tc.bodyType === "custom"
+          ? "Custom body"
+          : tc.bodyType === "adaptive-card-message"
+            ? "Adaptive Card (message envelope)"
+            : "Adaptive Card";
       return `${bodyLabel} → ${tc.url.slice(0, 50)}…`;
     }
     default:
