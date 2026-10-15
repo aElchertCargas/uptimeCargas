@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 interface ApiCustomer {
@@ -26,6 +27,9 @@ function matchesPattern(pattern: string, name: string, url: string): boolean {
 }
 
 export async function GET() {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   const apiUrl = process.env.ENERGY_API_URL;
   const apiKey = process.env.ENERGY_API_KEY;
 

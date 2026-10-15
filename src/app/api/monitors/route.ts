@@ -4,14 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { validateMonitorInput } from "@/lib/validation";
 
 export async function GET() {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   const monitors = await prisma.monitor.findMany({
     include: {
       checks: {
         orderBy: { checkedAt: "desc" },
         take: 1,
-      },
-      _count: {
-        select: { checks: true },
       },
     },
     orderBy: { name: "asc" },
