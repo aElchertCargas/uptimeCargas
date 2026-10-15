@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SettingsSection, SettingRow } from "@/components/settings/section";
 
 // ─── Notification Channel Types ──────────────────────────────────────────────
 
@@ -741,70 +742,63 @@ function DataRetentionSection() {
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Data Retention</h2>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Check History Retention</CardTitle>
-          <CardDescription>
-            Checks older than this are automatically pruned daily.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="retention-days" className="font-mono">
-                Retention (days)
-              </Label>
-              <Input
-                id="retention-days"
-                type="number"
-                min={1}
-                className="w-32 font-mono"
-                placeholder={loaded ? currentDays : "90"}
-                value={days}
-                onChange={(e) => setDays(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <Button
-              onClick={handleSave}
-              disabled={saveMutation.isPending || isLoading}
-            >
-              {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => runCleanupMutation.mutate()}
-              disabled={runCleanupMutation.isPending}
-            >
-              {runCleanupMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Run Cleanup Now
-            </Button>
-          </div>
-          {loaded && (
-            <div className="mt-2 space-y-1">
-              <p className="text-xs text-muted-foreground">
-                Currently keeping <span className="font-mono font-medium">{currentDays}</span> days of check history.
-              </p>
-              {settings?.lastCleanupAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last pruned: <span className="font-mono font-medium">
-                    {new Date(settings.lastCleanupAt).toLocaleString()}
-                  </span>
-                  {settings?.lastCleanupCount && (
-                    <> — <span className="font-mono font-medium">{settings.lastCleanupCount}</span> check(s) removed</>
-                  )}
-                </p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
+    <SettingsSection
+      id="retention"
+      title="Data Retention"
+      description="Old check history is pruned automatically every day."
+      footer={
+        loaded ? (
+          <>
+            <span>
+              Keeping <span className="font-mono font-medium">{currentDays}</span> days of history
+            </span>
+            {settings?.lastCleanupAt && (
+              <span>
+                Last pruned{" "}
+                <span className="font-mono font-medium">
+                  {new Date(settings.lastCleanupAt).toLocaleString()}
+                </span>
+                {settings?.lastCleanupCount && (
+                  <> · <span className="font-mono font-medium">{settings.lastCleanupCount}</span> removed</>
+                )}
+              </span>
+            )}
+          </>
+        ) : undefined
+      }
+    >
+      <SettingRow
+        label="Check history retention"
+        htmlFor="retention-days"
+        help="Checks older than this many days are deleted."
+      >
+        <Input
+          id="retention-days"
+          type="number"
+          min={1}
+          className="w-28 font-mono"
+          placeholder={loaded ? currentDays : "90"}
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+          disabled={isLoading}
+        />
+        <Button
+          onClick={handleSave}
+          disabled={saveMutation.isPending || isLoading}
+        >
+          {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+          Save
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => runCleanupMutation.mutate()}
+          disabled={runCleanupMutation.isPending}
+        >
+          {runCleanupMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+          Run Cleanup Now
+        </Button>
+      </SettingRow>
+    </SettingsSection>
   );
 }
 
@@ -862,50 +856,38 @@ function HeartbeatIntervalSection() {
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Heartbeat Interval</h2>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Default Check Interval</CardTitle>
-          <CardDescription>
-            Saving will update all existing monitors to the new interval.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="heartbeat-interval" className="font-mono">
-                Interval (seconds)
-              </Label>
-              <Input
-                id="heartbeat-interval"
-                type="number"
-                min={10}
-                className="w-32 font-mono"
-                placeholder={loaded ? currentInterval : "120"}
-                value={seconds}
-                onChange={(e) => setSeconds(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <Button
-              onClick={handleSave}
-              disabled={saveMutation.isPending || isLoading}
-            >
-              {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save &amp; Apply to All
-            </Button>
-          </div>
+    <SettingRow
+      label="Check interval"
+      htmlFor="heartbeat-interval"
+      help={
+        <>
+          Seconds between checks. Saving applies to all existing monitors.
           {loaded && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Current default: <span className="font-mono font-medium">{currentInterval}s</span>
-            </p>
+            <>
+              {" "}Current: <span className="font-mono font-medium">{currentInterval}s</span>
+            </>
           )}
-        </CardContent>
-      </Card>
-    </>
+        </>
+      }
+    >
+      <Input
+        id="heartbeat-interval"
+        type="number"
+        min={10}
+        className="w-28 font-mono"
+        placeholder={loaded ? currentInterval : "120"}
+        value={seconds}
+        onChange={(e) => setSeconds(e.target.value)}
+        disabled={isLoading}
+      />
+      <Button
+        onClick={handleSave}
+        disabled={saveMutation.isPending || isLoading}
+      >
+        {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+        Save &amp; Apply to All
+      </Button>
+    </SettingRow>
   );
 }
 
@@ -963,50 +945,38 @@ function AlertDelaySection() {
       : `${currentDelay}s`;
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Alert Delay</h2>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Down Alert Threshold</CardTitle>
-          <CardDescription>
-            How long a monitor must be continuously down before a notification is sent. Set to 0 for immediate alerts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="alert-delay" className="font-mono">
-                Delay (seconds)
-              </Label>
-              <Input
-                id="alert-delay"
-                type="number"
-                min={0}
-                className="w-32 font-mono"
-                placeholder={loaded ? currentDelay : "300"}
-                value={seconds}
-                onChange={(e) => setSeconds(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <Button
-              onClick={handleSave}
-              disabled={saveMutation.isPending || isLoading}
-            >
-              {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-          </div>
+    <SettingRow
+      label="Down alert delay"
+      htmlFor="alert-delay"
+      help={
+        <>
+          Seconds a monitor must stay down before alerting. Use 0 for immediate alerts.
           {loaded && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Currently waiting <span className="font-mono font-medium">{displayText}</span> before sending down alerts.
-            </p>
+            <>
+              {" "}Current: <span className="font-mono font-medium">{displayText}</span>
+            </>
           )}
-        </CardContent>
-      </Card>
-    </>
+        </>
+      }
+    >
+      <Input
+        id="alert-delay"
+        type="number"
+        min={0}
+        className="w-28 font-mono"
+        placeholder={loaded ? currentDelay : "300"}
+        value={seconds}
+        onChange={(e) => setSeconds(e.target.value)}
+        disabled={isLoading}
+      />
+      <Button
+        onClick={handleSave}
+        disabled={saveMutation.isPending || isLoading}
+      >
+        {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+        Save
+      </Button>
+    </SettingRow>
   );
 }
 
@@ -1099,97 +1069,77 @@ function FalseDownProtectionSection() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">False Down Protection</h2>
+      <SettingRow
+        label="False down protection"
+        help="Suppress new down incidents when many monitors fail with the same checker-side network error. Raw checks are still recorded."
+      >
+        <Switch
+          checked={enabled}
+          onCheckedChange={setEnabledDraft}
+          disabled={isLoading || saveMutation.isPending}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Min affected monitors"
+        htmlFor="false-down-min-affected"
+        help="Fewest monitors that must fail together."
+      >
+        <Input
+          id="false-down-min-affected"
+          type="number"
+          min={1}
+          className="w-28 font-mono"
+          value={minAffectedMonitors}
+          onChange={(e) => setMinAffectedMonitorsDraft(e.target.value)}
+          disabled={isLoading}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Min affected percentage"
+        htmlFor="false-down-affected-ratio"
+        help="Share of all monitors that must fail together."
+      >
+        <Input
+          id="false-down-affected-ratio"
+          type="number"
+          min={1}
+          max={100}
+          className="w-28 font-mono"
+          value={minAffectedPercent}
+          onChange={(e) => setMinAffectedPercentDraft(e.target.value)}
+          disabled={isLoading}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Required network-error percentage"
+        htmlFor="false-down-network-ratio"
+        help="Share of failures that must look like network errors."
+      >
+        <Input
+          id="false-down-network-ratio"
+          type="number"
+          min={1}
+          max={100}
+          className="w-28 font-mono"
+          value={minNetworkErrorPercent}
+          onChange={(e) => setMinNetworkErrorPercentDraft(e.target.value)}
+          disabled={isLoading}
+        />
+      </SettingRow>
+      <div className="flex items-center justify-between gap-3 bg-muted/30 px-6 py-3">
+        <p className="text-xs text-muted-foreground">
+          {loaded
+            ? `Current: ${minAffectedMonitors} monitor(s), ${minAffectedPercent}% affected, ${minNetworkErrorPercent}% network-style failures.`
+            : "Loading current thresholds..."}
+        </p>
+        <Button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || isLoading}
+        >
+          {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+          Save
+        </Button>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Mass Failure Safeguard</CardTitle>
-          <CardDescription>
-            Suppresses new down incidents when a large share of monitors flip down
-            with the same checker-side network failure pattern. Raw checks are still
-            recorded.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-            <div className="space-y-1">
-              <p className="font-medium">Enable safeguard</p>
-              <p className="text-sm text-muted-foreground">
-                Keep alerts flowing normally unless a suspicious batch failure is
-                detected.
-              </p>
-            </div>
-            <Switch
-              checked={enabled}
-              onCheckedChange={setEnabledDraft}
-              disabled={isLoading || saveMutation.isPending}
-            />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="false-down-min-affected" className="font-mono">
-                Min affected monitors
-              </Label>
-              <Input
-                id="false-down-min-affected"
-                type="number"
-                min={1}
-                className="font-mono"
-                value={minAffectedMonitors}
-                onChange={(e) => setMinAffectedMonitorsDraft(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="false-down-affected-ratio" className="font-mono">
-                Min affected percentage
-              </Label>
-              <Input
-                id="false-down-affected-ratio"
-                type="number"
-                min={1}
-                max={100}
-                className="font-mono"
-                value={minAffectedPercent}
-                onChange={(e) => setMinAffectedPercentDraft(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="false-down-network-ratio" className="font-mono">
-                Required network-error percentage
-              </Label>
-              <Input
-                id="false-down-network-ratio"
-                type="number"
-                min={1}
-                max={100}
-                className="font-mono"
-                value={minNetworkErrorPercent}
-                onChange={(e) => setMinNetworkErrorPercentDraft(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              {loaded
-                ? `Current thresholds: ${minAffectedMonitors} monitor(s), ${minAffectedPercent}% affected, ${minNetworkErrorPercent}% network-style failures.`
-                : "Loading current thresholds..."}
-            </p>
-            <Button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || isLoading}
-            >
-              {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </>
   );
 }
@@ -1259,59 +1209,52 @@ function SslAlertSection() {
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">SSL Certificate Alerts</h2>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Expiry Alert Threshold</CardTitle>
-          <CardDescription>
-            Send a notification when an SSL certificate expires within this many days. Certificates are checked once per day.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="ssl-alert-days" className="font-mono">
-                Days before expiry
-              </Label>
-              <Input
-                id="ssl-alert-days"
-                type="number"
-                min={1}
-                className="w-32 font-mono"
-                placeholder={loaded ? currentDays : "1"}
-                value={days}
-                onChange={(e) => setDays(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <Button
-              onClick={handleSave}
-              disabled={saveMutation.isPending || isLoading}
-            >
-              {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => runSslCheckMutation.mutate()}
-              disabled={runSslCheckMutation.isPending}
-            >
-              {runSslCheckMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Check Now
-            </Button>
-          </div>
-          {loaded && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Currently alerting when certificates expire within{" "}
-              <span className="font-mono font-medium">{currentDays}</span> day{currentDays === "1" ? "" : "s"}.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </>
+    <SettingsSection
+      id="ssl"
+      title="SSL Certificate Alerts"
+      description="Certificates are checked once per day."
+    >
+      <SettingRow
+        label="Days before expiry"
+        htmlFor="ssl-alert-days"
+        help={
+          <>
+            Alert when a certificate expires within this many days.
+            {loaded && (
+              <>
+                {" "}Current: <span className="font-mono font-medium">{currentDays}</span> day{currentDays === "1" ? "" : "s"}
+              </>
+            )}
+          </>
+        }
+      >
+        <Input
+          id="ssl-alert-days"
+          type="number"
+          min={1}
+          className="w-28 font-mono"
+          placeholder={loaded ? currentDays : "1"}
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+          disabled={isLoading}
+        />
+        <Button
+          onClick={handleSave}
+          disabled={saveMutation.isPending || isLoading}
+        >
+          {saveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+          Save
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => runSslCheckMutation.mutate()}
+          disabled={runSslCheckMutation.isPending}
+        >
+          {runSslCheckMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+          Check Now
+        </Button>
+      </SettingRow>
+    </SettingsSection>
   );
 }
 
@@ -1370,7 +1313,7 @@ function ExcludedPatternsSection() {
   return (
     <>
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Excluded Patterns</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Excluded Patterns</h2>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -1640,7 +1583,7 @@ function UserManagementSection() {
   return (
     <>
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Users</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Users</h2>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -1815,7 +1758,7 @@ function DebugLogSection() {
   return (
     <>
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Debug Log</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Debug Log</h2>
       </div>
       <Card>
         <CardHeader>
@@ -2033,7 +1976,7 @@ function ZendeskSection() {
   return (
     <>
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Zendesk Integration</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Zendesk Integration</h2>
       </div>
       <Card>
         <CardHeader>
@@ -2226,6 +2169,17 @@ function ZendeskSection() {
 
 // ─── Settings Page ───────────────────────────────────────────────────────────
 
+const SETTINGS_NAV = [
+  { id: "users", label: "Users" },
+  { id: "channels", label: "Channels" },
+  { id: "timing", label: "Timing" },
+  { id: "ssl", label: "SSL" },
+  { id: "zendesk", label: "Zendesk" },
+  { id: "retention", label: "Retention" },
+  { id: "exclusions", label: "Exclusions" },
+  { id: "debug", label: "Debug" },
+];
+
 export default function SettingsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const { data: channels, isLoading, error } = useQuery({
@@ -2237,122 +2191,116 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage notifications, retention, and exclusions</p>
+        <p className="text-sm text-muted-foreground">
+          Manage notifications, check timing, integrations and data retention.
+        </p>
       </div>
 
-      {/* User Management */}
-      <UserManagementSection />
+      <nav
+        aria-label="Settings sections"
+        className="flex flex-wrap gap-2 border-b pb-4"
+      >
+        {SETTINGS_NAV.map((item) => (
+          <a
+            key={item.id}
+            href={`#${item.id}`}
+            className="rounded-md border px-3 py-1.5 font-mono text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
 
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* Notification Channels */}
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-medium">Notification Channels</h2>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4" />
-              Add Channel
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Add Channel</DialogTitle>
-              <DialogDescription>
-                Create a new notification channel for alerts.
-              </DialogDescription>
-            </DialogHeader>
-            <ChannelForm
-              channel={null}
-              onSuccess={() => setAddOpen(false)}
-              onCancel={() => setAddOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
+      <div id="users" className="scroll-mt-6 space-y-4">
+        <UserManagementSection />
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center py-12 text-muted-foreground">
-          <Loader2 className="size-6 animate-spin" />
+      <div id="channels" className="scroll-mt-6 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold tracking-tight">Notification Channels</h2>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="size-4" />
+                Add Channel
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Channel</DialogTitle>
+                <DialogDescription>
+                  Create a new notification channel for alerts.
+                </DialogDescription>
+              </DialogHeader>
+              <ChannelForm
+                channel={null}
+                onSuccess={() => setAddOpen(false)}
+                onCancel={() => setAddOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
-      )}
 
-      {error && (
-        <Card className="border-destructive/50">
-          <CardContent className="py-6">
-            <p className="text-destructive">
-              {error instanceof Error ? error.message : "Failed to load channels"}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Loader2 className="size-6 animate-spin" />
+          </div>
+        )}
 
-      {!isLoading && !error && channels?.length === 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12 text-center">
-            <p className="text-muted-foreground">
-              No notification channels yet. Use the button above to add one.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        {error && (
+          <Card className="border-destructive/50">
+            <CardContent className="py-6">
+              <p className="text-destructive">
+                {error instanceof Error ? error.message : "Failed to load channels"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-      {!isLoading && !error && channels && channels.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
-          {channels.map((channel) => (
-            <ChannelCard key={channel.id} channel={channel} />
-          ))}
-        </div>
-      )}
+        {!isLoading && !error && channels?.length === 0 && (
+          <Card>
+            <CardContent className="flex items-center justify-center py-12 text-center">
+              <p className="text-muted-foreground">
+                No notification channels yet. Use the button above to add one.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Divider */}
-      <div className="border-t border-border" />
+        {!isLoading && !error && channels && channels.length > 0 && (
+          <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2">
+            {channels.map((channel) => (
+              <ChannelCard key={channel.id} channel={channel} />
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Heartbeat Interval */}
-      <HeartbeatIntervalSection />
+      <SettingsSection
+        id="timing"
+        title="Check Timing & Alerts"
+        description="How often monitors run and when a failure becomes an alert."
+      >
+        <HeartbeatIntervalSection />
+        <AlertDelaySection />
+        <FalseDownProtectionSection />
+      </SettingsSection>
 
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* Alert Delay */}
-      <AlertDelaySection />
-
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* False Down Protection */}
-      <FalseDownProtectionSection />
-
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* SSL Certificate Alerts */}
       <SslAlertSection />
 
-      {/* Divider */}
-      <div className="border-t border-border" />
+      <div id="zendesk" className="scroll-mt-6 space-y-4">
+        <ZendeskSection />
+      </div>
 
-      {/* Zendesk Integration */}
-      <ZendeskSection />
-
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* Data Retention */}
       <DataRetentionSection />
 
-      {/* Divider */}
-      <div className="border-t border-border" />
+      <div id="exclusions" className="scroll-mt-6 space-y-4">
+        <ExcludedPatternsSection />
+      </div>
 
-      {/* Excluded Patterns */}
-      <ExcludedPatternsSection />
-
-      {/* Divider */}
-      <div className="border-t border-border" />
-
-      {/* Debug Log */}
-      <DebugLogSection />
+      <div id="debug" className="scroll-mt-6 space-y-4">
+        <DebugLogSection />
+      </div>
     </div>
   );
 }
