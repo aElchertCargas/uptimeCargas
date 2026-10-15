@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Trash2,
   Loader2,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,194 @@ type FilterType =
   | "zendesk_ticket_failed"
   | "ssl_expiring"
   | "ssl_error";
+
+interface SchedulerJob {
+  key: string;
+  name: string;
+  status: "healthy" | "running" | "stale" | "unknown";
+  intervalMs: number;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastDurationMs: number | null;
+  lastError: string | null;
+  runs: number;
+  failures: number;
+  errors24h: number;
+}
+
+interface SchedulerHealth {
+  now: string;
+  running: boolean;
+  startedAt: string | null;
+  jobs: SchedulerJob[];
+  stats: {
+    activeMonitors: number;
+    dueNow: number;
+    maxOverdueMs: number;
+    checks5m: number;
+    failed5m: number;
+    pendingAlerts: number;
+    openIncidents: number;
+    dbLatencyMs: number;
+  };
+  events: { id: string; type: string; message: string; createdAt: string }[];
+}
+
+const HEALTH_DOT: Record<string, string> = {
+  healthy: "bg-[var(--color-status-up)]",
+  running: "bg-blue-400 animate-pulse",
+  stale: "bg-[var(--color-status-down)]",
+  unknown: "bg-muted-foreground",
+};
+
+function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+}
+
+function timeAgo(dateStr: string | null, nowMs: number): string {
+  if (!dateStr) return "never";
+  return `${formatDuration(nowMs - new Date(dateStr).getTime())} ago`;
+}
+
+function Stat({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("font-mono text-lg font-semibold", warn && "text-amber-400")}>{value}</div>
+    </div>
+  );
+}
+
+function SchedulerHealthPanel() {
+  const { data, isError, dataUpdatedAt } = useQuery<SchedulerHealth>({
+    queryKey: ["scheduler-health"],
+    queryFn: async () => {
+      const res = await fetch("/api/scheduler/health");
+      if (!res.ok) throw new Error("Failed to fetch scheduler health");
+      return res.json();
+    },
+    refetchInterval: 5_000,
+  });
+
+  // Tick every second so countdowns move between polls.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!data) return null;
+  const { stats } = data;
+  const stale = data.jobs.some((j) => j.status === "stale");
+  const level = !data.running || isError ? "down" : stale ? "degraded" : "ok";
+  const failRate = stats.checks5m ? Math.round((stats.failed5m / stats.checks5m) * 100) : 0;
+
+  return (
+    <section className="rounded-xl border bg-card text-card-foreground shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b px-6 py-3">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Activity className="size-4" />
+          Scheduler health
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--color-status-up)] opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-[var(--color-status-up)]" />
+          </span>
+          <span className="font-mono text-xs font-normal text-muted-foreground">live</span>
+        </div>
+        <Badge
+          className={cn(
+            "text-[10px]",
+            level === "ok" ? "bg-[var(--color-status-up)] text-white" : "bg-[var(--color-status-down)] text-white"
+          )}
+        >
+          {level === "down" ? (isError ? "UNREACHABLE" : "NOT RUNNING") : level === "degraded" ? "DEGRADED" : "HEALTHY"}
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 px-6 py-4 sm:grid-cols-3">
+        {data.jobs.map((job) => {
+          const nextMs = job.nextRunAt ? new Date(job.nextRunAt).getTime() - nowMs : null;
+          const lastMs = job.lastRunAt ? new Date(job.lastRunAt).getTime() : null;
+          const total = job.intervalMs;
+          const pct =
+            job.status === "running"
+              ? 100
+              : nextMs == null
+                ? 0
+                : Math.min(100, Math.max(0, ((total - Math.max(nextMs, 0)) / total) * 100));
+          return (
+            <div key={job.key} className="space-y-2 rounded-lg border p-3 font-mono text-xs">
+              <div className="flex items-center justify-between text-sm font-medium">
+                <span className="flex items-center gap-2">
+                  <span className={cn("size-2 rounded-full", HEALTH_DOT[job.status])} />
+                  {job.name}
+                </span>
+                <span className="text-[10px] uppercase text-muted-foreground">{job.status}</span>
+              </div>
+              <div className="text-base font-semibold">
+                {job.status === "running"
+                  ? "Running now…"
+                  : nextMs == null
+                    ? "Next run: unknown"
+                    : nextMs <= 0
+                      ? "Due now"
+                      : `Next in ${formatDuration(nextMs)}`}
+              </div>
+              <div className="h-1 overflow-hidden rounded bg-muted">
+                <div
+                  className={cn("h-full transition-[width] duration-1000 ease-linear", job.status === "stale" ? "bg-[var(--color-status-down)]" : "bg-blue-400")}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="space-y-0.5 text-muted-foreground">
+                <div>Last run: {lastMs ? timeAgo(job.lastRunAt, nowMs) : "never"}{job.lastDurationMs != null && ` · took ${formatDuration(job.lastDurationMs)}`}</div>
+                <div>Every {formatDuration(job.intervalMs)} · {job.runs} run(s) · {job.failures} failed</div>
+              </div>
+              {job.lastError && <div className="text-[var(--color-status-down)]">{job.lastError}</div>}
+              {job.errors24h > 0 && <div className="text-amber-400">{job.errors24h} error(s) in 24h</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 border-t px-6 py-4 sm:grid-cols-4 lg:grid-cols-8">
+        <Stat label="Active monitors" value={stats.activeMonitors} />
+        <Stat label="Due now" value={stats.dueNow} warn={stats.dueNow > Math.max(5, stats.activeMonitors * 0.2)} />
+        <Stat label="Max overdue" value={formatDuration(stats.maxOverdueMs)} warn={stats.maxOverdueMs > 120_000} />
+        <Stat label="Checks / 5m" value={stats.checks5m} />
+        <Stat label="Failed / 5m" value={`${stats.failed5m} (${failRate}%)`} warn={stats.failed5m > 0} />
+        <Stat label="Pending alerts" value={stats.pendingAlerts} warn={stats.pendingAlerts > 0} />
+        <Stat label="Open incidents" value={stats.openIncidents} warn={stats.openIncidents > 0} />
+        <Stat label="DB latency" value={`${stats.dbLatencyMs}ms`} warn={stats.dbLatencyMs > 500} />
+      </div>
+
+      {data.events.length > 0 && (
+        <div className="border-t px-6 py-3">
+          <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Recent scheduler events</div>
+          <ul className="space-y-0.5 font-mono text-xs text-muted-foreground">
+            {data.events.map((e) => (
+              <li key={e.id} className="flex gap-3">
+                <span className="w-16 shrink-0">{timeAgo(e.createdAt, nowMs)}</span>
+                <span className="w-32 shrink-0">{e.type}</span>
+                <span className="truncate">{e.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="border-t px-6 py-2 font-mono text-xs text-muted-foreground">
+        Scheduler {data.running ? "running" : "stopped"}
+        {data.startedAt && ` · up ${formatDuration(nowMs - new Date(data.startedAt).getTime())}`}
+        {" · "}updated {formatDuration(nowMs - dataUpdatedAt)} ago · polls every 5s
+      </div>
+    </section>
+  );
+}
 
 function formatDateTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString("en-US", {
@@ -136,6 +325,8 @@ export default function DebugLogPage() {
           Clear All
         </Button>
       </div>
+
+      <SchedulerHealthPanel />
 
       <section className="rounded-xl border bg-card text-card-foreground shadow-sm">
       <div className="flex flex-wrap gap-2 border-b px-6 py-4">
