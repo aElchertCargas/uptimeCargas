@@ -13,9 +13,6 @@ export async function GET() {
         orderBy: { checkedAt: "desc" },
         take: 1,
       },
-      _count: {
-        select: { checks: true },
-      },
     },
     orderBy: { name: "asc" },
   });

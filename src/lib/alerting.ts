@@ -855,45 +855,48 @@ export async function dispatchPendingAlertEvents(now: Date) {
 
     const payload = buildAlertPayload(event, zendeskSettings.subdomain);
 
-    for (const channel of targetChannels) {
-      const delivery = await prisma.alertDelivery.upsert({
-        where: {
-          alertEventId_channelId: {
+    // Channels are independent, so one slow webhook shouldn't hold up the rest.
+    await Promise.all(
+      targetChannels.map(async (channel) => {
+        const delivery = await prisma.alertDelivery.upsert({
+          where: {
+            alertEventId_channelId: {
+              alertEventId: event.id,
+              channelId: channel.id,
+            },
+          },
+          update: {},
+          create: {
             alertEventId: event.id,
             channelId: channel.id,
+            status: ALERT_STATUS_PENDING,
           },
-        },
-        update: {},
-        create: {
-          alertEventId: event.id,
-          channelId: channel.id,
-          status: ALERT_STATUS_PENDING,
-        },
-      });
+        });
 
-      if (delivery.sentAt) {
-        continue;
-      }
+        if (delivery.sentAt) {
+          return;
+        }
 
-      const result = await dispatchNotificationDetailed(
-        channel.type,
-        channel.name,
-        channel.config as Record<string, unknown>,
-        payload
-      );
-      const attemptedAt = new Date();
+        const result = await dispatchNotificationDetailed(
+          channel.type,
+          channel.name,
+          channel.config as Record<string, unknown>,
+          payload
+        );
+        const attemptedAt = new Date();
 
-      await prisma.alertDelivery.update({
-        where: { id: delivery.id },
-        data: {
-          status: result.ok ? ALERT_STATUS_SENT : ALERT_STATUS_FAILED,
-          attemptCount: { increment: 1 },
-          attemptedAt,
-          sentAt: result.ok ? attemptedAt : null,
-          lastError: result.error,
-        },
-      });
-    }
+        await prisma.alertDelivery.update({
+          where: { id: delivery.id },
+          data: {
+            status: result.ok ? ALERT_STATUS_SENT : ALERT_STATUS_FAILED,
+            attemptCount: { increment: 1 },
+            attemptedAt,
+            sentAt: result.ok ? attemptedAt : null,
+            lastError: result.error,
+          },
+        });
+      })
+    );
 
     const refreshedDeliveries = await prisma.alertDelivery.findMany({
       where: {
