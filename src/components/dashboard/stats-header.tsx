@@ -1,88 +1,108 @@
 "use client";
 
-import { Activity, CheckCircle2, XCircle, Monitor } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-
-export interface StatsSummary {
-  total: number;
-  active: number;
-  up: number;
-  down: number;
-}
+import {
+  formatDuration,
+  getMonitorStatus,
+  type MonitorData,
+  type StatsSummary,
+  type StatusFilter,
+} from "./types";
 
 interface StatsHeaderProps {
   summary: StatsSummary;
-  onDownClick?: () => void;
-  onUpClick?: () => void;
+  monitors: MonitorData[];
+  now: number;
+  activeFilter: StatusFilter;
+  onFilter: (filter: StatusFilter) => void;
 }
 
-const statCards: {
-  key: keyof StatsSummary;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  colorClass?: string;
-  glowClass?: string;
-  pulseClass?: string;
-}[] = [
-  { key: "total", label: "Total Monitors", icon: Monitor },
-  { key: "active", label: "Active", icon: Activity },
-  { key: "up", label: "Up", icon: CheckCircle2, colorClass: "text-[var(--color-status-up)]" },
-  {
-    key: "down",
-    label: "Down",
-    icon: XCircle,
-    colorClass: "text-[var(--color-status-down)]",
-    glowClass: "glow-down",
-    pulseClass: "animate-pulse-down",
-  },
-];
+export function StatsHeader({
+  summary,
+  monitors,
+  now,
+  activeFilter,
+  onFilter,
+}: StatsHeaderProps) {
+  const longestDownSince = monitors
+    .filter((m) => getMonitorStatus(m) === "down")
+    .map((m) => m.downSince ?? m.suppressedDownAt)
+    .filter((s): s is string => !!s)
+    .sort()[0];
 
-export function StatsHeader({ summary, onDownClick, onUpClick }: StatsHeaderProps) {
+  const tiles: {
+    filter: StatusFilter;
+    label: string;
+    dot: string;
+    value: React.ReactNode;
+    caption: string;
+    alert?: boolean;
+  }[] = [
+    {
+      filter: "up",
+      label: "Up",
+      dot: "bg-status-up",
+      value: (
+        <>
+          {summary.up}
+          <span className="text-sm text-muted-foreground"> / {summary.active}</span>
+        </>
+      ),
+      caption: "active monitors",
+    },
+    {
+      filter: "down",
+      label: "Down",
+      dot: "bg-status-down",
+      value: summary.down,
+      caption: longestDownSince
+        ? `longest ${formatDuration(now - new Date(longestDownSince).getTime())}`
+        : "all clear",
+      alert: summary.down > 0,
+    },
+    {
+      filter: "paused",
+      label: "Paused",
+      dot: "bg-status-pending",
+      value: summary.paused,
+      caption: "not checked",
+    },
+  ];
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {statCards.map(({ key, label, icon: Icon, colorClass, glowClass, pulseClass }) => {
-        const count = summary[key];
-        const isDownCard = key === "down";
-        const isUpCard = key === "up";
-        const showAlert = isDownCard && count > 0;
-        const isClickable = (isDownCard || isUpCard) && count > 0;
-        
-        const handleClick = () => {
-          if (isDownCard && onDownClick) onDownClick();
-          if (isUpCard && onUpClick) onUpClick();
-        };
-
+    <section aria-label="Summary" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {tiles.map((tile) => {
+        const selected = activeFilter === tile.filter;
         return (
-          <Card
-            key={key}
+          <button
+            key={tile.filter}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onFilter(selected ? "all" : tile.filter)}
             className={cn(
-              "transition-shadow",
-              showAlert && glowClass,
-              showAlert && pulseClass,
-              isDownCard && count > 0 && "cursor-pointer hover:ring-2 hover:ring-[var(--color-status-down)]/50",
-              isUpCard && count > 0 && "cursor-pointer hover:ring-2 hover:ring-[var(--color-status-up)]/50"
+              "rounded-xl border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              tile.alert && "border-status-down",
+              selected && "ring-2 ring-foreground/15"
             )}
-            onClick={isClickable ? handleClick : undefined}
           >
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <span className="text-muted-foreground text-sm font-medium">
-                {label}
-              </span>
-              <Icon className={cn("size-4", colorClass)} />
-            </CardHeader>
-            <CardContent>
-              <span className="font-mono text-2xl font-semibold tracking-tight">
-                {count}
-              </span>
-            </CardContent>
-          </Card>
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <span className={cn("size-2 rounded-full", tile.dot)} />
+              {tile.label}
+            </div>
+            <div
+              className={cn(
+                "mt-1.5 font-mono text-[26px] font-medium tracking-tight",
+                tile.alert && "text-status-down"
+              )}
+            >
+              {tile.value}
+            </div>
+            <div className="mt-1.5 font-mono text-xs text-muted-foreground">
+              {tile.caption}
+            </div>
+          </button>
         );
       })}
-    </div>
+    </section>
   );
 }
