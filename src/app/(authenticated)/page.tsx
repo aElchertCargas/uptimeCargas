@@ -1,19 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { StatsHeader, type StatsSummary } from "@/components/dashboard/stats-header";
+import { AttentionPanel } from "@/components/dashboard/attention-panel";
+import { StatsHeader } from "@/components/dashboard/stats-header";
 import { MonitorGrid } from "@/components/dashboard/monitor-grid";
-import type { MonitorData } from "@/components/dashboard/monitor-card";
+import { RecentEvents } from "@/components/dashboard/recent-events";
+import type { StatsResponse, StatusFilter } from "@/components/dashboard/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, Plus } from "lucide-react";
 import { toast } from "sonner";
-
-interface StatsResponse {
-  summary: StatsSummary;
-  monitors: MonitorData[];
-}
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("en-US", {
@@ -26,7 +24,13 @@ function formatTime(date: Date): string {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<"all" | "up" | "down" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const { data, isLoading, dataUpdatedAt } = useQuery<StatsResponse>({
     queryKey: ["stats"],
@@ -59,21 +63,23 @@ export default function DashboardPage() {
       toast.error(err instanceof Error ? err.message : "Failed to run checks"),
   });
 
+  // Keep "x ago" labels in step with fresh data, not just the 30s tick.
+  const renderNow = Math.max(now, dataUpdatedAt);
+  const lastCycleAt = data?.summary.lastCycleAt;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Monitor status overview
+          <p className="font-mono text-xs text-muted-foreground">
+            {lastCycleAt
+              ? `Last cycle ${formatTime(new Date(lastCycleAt))}`
+              : "No checks yet"}
+            {dataUpdatedAt > 0 && ` · refreshed ${formatTime(new Date(dataUpdatedAt))}`}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {dataUpdatedAt > 0 && (
-            <span className="font-mono text-xs text-muted-foreground">
-              Last refresh: {formatTime(new Date(dataUpdatedAt))}
-            </span>
-          )}
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -87,38 +93,60 @@ export default function DashboardPage() {
             )}
             Run Checks
           </Button>
+          <Button size="sm" asChild>
+            <Link href="/monitors/new">
+              <Plus className="size-4" />
+              Add Monitor
+            </Link>
+          </Button>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-lg" />
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-[106px] rounded-xl" />
             ))}
           </div>
-          <div className="space-y-1">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 rounded-lg" />
-            ))}
+          <div className="flex flex-wrap gap-5">
+            <Skeleton className="h-96 min-w-0 flex-[3_1_640px] rounded-xl" />
+            <Skeleton className="h-96 flex-[1_1_300px] rounded-xl" />
           </div>
         </div>
       ) : data ? (
         <>
-          <StatsHeader 
-            summary={data.summary} 
-            onDownClick={() => setStatusFilter("down")}
-            onUpClick={() => setStatusFilter("up")}
+          <AttentionPanel
+            monitors={data.monitors}
+            now={renderNow}
+            onShowDown={() => setStatusFilter("down")}
           />
-          <MonitorGrid 
-            monitors={data.monitors} 
-            initialStatusFilter={statusFilter}
+          <StatsHeader
+            summary={data.summary}
+            monitors={data.monitors}
+            now={renderNow}
+            activeFilter={statusFilter}
+            onFilter={setStatusFilter}
           />
+          <div className="flex flex-wrap items-start gap-5">
+            <div className="min-w-0 flex-[3_1_640px]">
+              <MonitorGrid
+                monitors={data.monitors}
+                summary={data.summary}
+                now={renderNow}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+              />
+            </div>
+            <div className="min-w-0 flex-[1_1_300px]">
+              <RecentEvents events={data.events} />
+            </div>
+          </div>
         </>
       ) : (
-        <div className="flex h-64 items-center justify-center rounded-lg border border-border">
+        <div className="flex h-64 items-center justify-center rounded-xl border bg-card">
           <p className="font-mono text-sm text-muted-foreground">
-            No data available. Add monitors to get started.
+            Couldn&apos;t load dashboard data.
           </p>
         </div>
       )}

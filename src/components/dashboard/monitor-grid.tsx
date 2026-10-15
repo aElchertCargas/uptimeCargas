@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -11,8 +12,10 @@ import {
   Play,
   Loader2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -21,78 +24,117 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MonitorCard } from "./monitor-card";
-import type { MonitorData } from "./monitor-card";
 import { toast } from "sonner";
+import {
+  SSL_WARNING_DAYS,
+  daysUntil,
+  formatAgo,
+  getMonitorStatus,
+  type MonitorData,
+  type MonitorStatus,
+  type StatsSummary,
+  type StatusFilter,
+} from "./types";
 
 interface MonitorGridProps {
   monitors: MonitorData[];
-  initialStatusFilter?: StatusFilter;
+  summary: StatsSummary;
+  now: number;
+  statusFilter: StatusFilter;
+  onStatusFilterChange: (filter: StatusFilter) => void;
 }
 
-type StatusFilter = "all" | "up" | "down" | "pending";
+type SortKey = "status" | "name" | "slowest" | "uptime";
 
-function getMonitorStatus(monitor: MonitorData): "up" | "down" | "pending" {
-  if (!monitor.active) return "pending";
-  if (!monitor.latestCheck) return "pending";
-  return monitor.latestCheck.isUp ? "up" : "down";
-}
+const STATUS_ORDER: Record<MonitorStatus, number> = {
+  down: 0,
+  pending: 1,
+  up: 2,
+  paused: 3,
+};
 
-function filterMonitors(
-  monitors: MonitorData[],
-  query: string,
-  statusFilter: StatusFilter
-): MonitorData[] {
-  const q = query.toLowerCase().trim();
-  return monitors.filter((m) => {
-    const matchesQuery =
-      !q ||
-      m.name.toLowerCase().includes(q) ||
-      m.url.toLowerCase().includes(q);
-    if (!matchesQuery) return false;
-    if (statusFilter === "all") return true;
-    return getMonitorStatus(m) === statusFilter;
-  });
-}
+const STATUS_LABEL: Record<MonitorStatus, string> = {
+  up: "UP",
+  down: "DOWN",
+  paused: "PAUSED",
+  pending: "PENDING",
+};
 
-function groupByLetter(monitors: MonitorData[]): Map<string, MonitorData[]> {
-  const sorted = [...monitors].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-  );
-  const groups = new Map<string, MonitorData[]>();
-  for (const m of sorted) {
-    const letter = (m.name[0] ?? "#").toUpperCase();
-    const key = /^[A-Z]$/.test(letter) ? letter : "#";
-    const arr = groups.get(key);
-    if (arr) arr.push(m);
-    else groups.set(key, [m]);
+const STATUS_BADGE: Record<MonitorStatus, string> = {
+  up: "bg-status-up/10 text-status-up",
+  down: "bg-status-down/10 text-status-down",
+  paused: "bg-status-pending/10 text-status-pending",
+  pending: "bg-muted text-muted-foreground",
+};
+
+const STATUS_DOT: Record<MonitorStatus | "all", string> = {
+  all: "bg-foreground",
+  up: "bg-status-up",
+  down: "bg-status-down",
+  paused: "bg-status-pending",
+  pending: "bg-muted-foreground",
+};
+
+function compareMonitors(sort: SortKey) {
+  const byName = (a: MonitorData, b: MonitorData) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  switch (sort) {
+    case "name":
+      return byName;
+    case "slowest":
+      return (a: MonitorData, b: MonitorData) =>
+        (b.lastResponseTime ?? -1) - (a.lastResponseTime ?? -1) || byName(a, b);
+    case "uptime":
+      return (a: MonitorData, b: MonitorData) =>
+        (a.uptime24h ?? 101) - (b.uptime24h ?? 101) || byName(a, b);
+    default:
+      return (a: MonitorData, b: MonitorData) =>
+        STATUS_ORDER[getMonitorStatus(a)] - STATUS_ORDER[getMonitorStatus(b)] ||
+        byName(a, b);
   }
-  return groups;
 }
 
 type BulkAction = "delete" | "ban-delete" | "check" | null;
 
-export function MonitorGrid({ monitors, initialStatusFilter = "all" }: MonitorGridProps) {
+export function MonitorGrid({
+  monitors,
+  summary,
+  now,
+  statusFilter,
+  onStatusFilterChange,
+}: MonitorGridProps) {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter);
+  const [tagFilter, setTagFilter] = useState("all");
+  const [sort, setSort] = useState<SortKey>("status");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<BulkAction>(null);
 
-  useEffect(() => {
-    setStatusFilter(initialStatusFilter);
-  }, [initialStatusFilter]);
-
-  const filteredMonitors = useMemo(
-    () => filterMonitors(monitors, searchQuery, statusFilter),
-    [monitors, searchQuery, statusFilter]
+  const tags = useMemo(
+    () => [...new Set(monitors.flatMap((m) => m.tags))].sort(),
+    [monitors]
   );
 
-  const letterGroups = useMemo(
-    () => groupByLetter(filteredMonitors),
-    [filteredMonitors]
-  );
+  const filteredMonitors = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return monitors
+      .filter((m) => {
+        if (statusFilter !== "all" && getMonitorStatus(m) !== statusFilter) return false;
+        if (tagFilter !== "all" && !m.tags.includes(tagFilter)) return false;
+        return (
+          !q || m.name.toLowerCase().includes(q) || m.url.toLowerCase().includes(q)
+        );
+      })
+      .sort(compareMonitors(sort));
+  }, [monitors, searchQuery, statusFilter, tagFilter, sort]);
+
+  const filters: { id: StatusFilter; label: string; count: number }[] = [
+    { id: "all", label: "All", count: summary.total },
+    { id: "up", label: "Up", count: summary.up },
+    { id: "down", label: "Down", count: summary.down },
+    { id: "paused", label: "Paused", count: summary.paused },
+  ];
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -211,98 +253,154 @@ export function MonitorGrid({ monitors, initialStatusFilter = "all" }: MonitorGr
     },
   };
 
-  let globalIndex = 0;
+  const selectClass =
+    "h-8 rounded-md border border-input bg-card px-2 text-[13px] shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
   return (
-    <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Filter by name or URL..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 font-mono"
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          {selectMode ? (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={selectAll}>
-                All
-              </Button>
-              <span className="font-mono text-sm text-muted-foreground">
-                {selectedIds.size} selected
-              </span>
-              <Button size="sm" variant="ghost" onClick={exitSelectMode}>
-                <X className="size-4" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setSelectMode(true)}
-            >
-              <MousePointerClick className="size-4" />
-              Select
-            </Button>
-          )}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="h-9 rounded-md border border-input bg-card px-3 py-1 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">All status</option>
-            <option value="up">Up</option>
-            <option value="down">Down</option>
-            <option value="pending">Pending</option>
-          </select>
+    <section
+      aria-labelledby="monitors-heading"
+      className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-sm"
+    >
+      {/* Title + status filter */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+        <h2 id="monitors-heading" className="text-[15px] font-semibold">
+          Monitors
+        </h2>
+        <div
+          role="group"
+          aria-label="Status filter"
+          className="flex flex-wrap gap-0.5 rounded-[10px] bg-muted p-[3px]"
+        >
+          {filters.map((f) => {
+            const on = statusFilter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onStatusFilterChange(f.id)}
+                className={cn(
+                  "inline-flex h-8 items-center gap-2 rounded-md border border-transparent px-3 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground",
+                  on && "border-border bg-card text-foreground shadow-sm"
+                )}
+              >
+                <span className={cn("size-2 rounded-full", STATUS_DOT[f.id])} />
+                {f.label}
+                <span className="font-mono text-xs text-muted-foreground">{f.count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Monitor list grouped by letter */}
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Search monitors"
+            placeholder="Search name or URL"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 pl-8 text-[13px]"
+          />
+        </div>
+        {tags.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Tag
+            <select
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              className={cn(selectClass, "text-foreground")}
+            >
+              <option value="all">All tags</option>
+              {tags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className={cn(selectClass, "text-foreground")}
+          >
+            <option value="status">Status, then name</option>
+            <option value="name">Name</option>
+            <option value="slowest">Slowest first</option>
+            <option value="uptime">Lowest uptime</option>
+          </select>
+        </label>
+        {selectMode ? (
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={selectAll}>
+              All
+            </Button>
+            <span className="font-mono text-xs text-muted-foreground">
+              {selectedIds.size} selected
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Exit select mode"
+              onClick={exitSelectMode}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setSelectMode(true)}>
+            <MousePointerClick className="size-4" />
+            Select
+          </Button>
+        )}
+      </div>
+
+      {/* Table */}
       {filteredMonitors.length === 0 ? (
-        <div className="flex h-32 items-center justify-center rounded-lg border border-border">
-          <p className="font-mono text-sm text-muted-foreground">
-            {monitors.length === 0
-              ? "No monitors yet. Add one to get started."
-              : "No monitors match your filter."}
-          </p>
+        <div className="px-4 py-10 text-center font-mono text-[13px] text-muted-foreground">
+          {monitors.length === 0
+            ? "No monitors yet. Add one to get started."
+            : "No monitors match this filter."}
         </div>
       ) : (
-        <div className="space-y-0">
-          {[...letterGroups.entries()].map(([letter, group]) => (
-            <div key={letter}>
-              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-1 py-1.5 backdrop-blur-sm">
-                <span className="font-mono text-xs font-semibold text-muted-foreground">
-                  {letter}
-                </span>
-                <div className="h-px flex-1 bg-border" />
-                <span className="font-mono text-xs text-muted-foreground/60">
-                  {group.length}
-                </span>
-              </div>
-              <div className="space-y-1 pb-2">
-                {group.map((monitor) => {
-                  const idx = globalIndex++;
-                  return (
-                    <MonitorCard
-                      key={monitor.id}
-                      monitor={monitor}
-                      index={idx}
-                      selectable={selectMode}
-                      selected={selectedIds.has(monitor.id)}
-                      onToggleSelect={toggleSelect}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] border-collapse text-[13px]">
+            <thead>
+              <tr className="border-b font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                {selectMode && <th className="w-10 px-3 py-2.5" />}
+                <th className="px-3 py-2.5 text-left font-medium">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium">Monitor</th>
+                <th className="px-3 py-2.5 text-left font-medium">Last 60 min</th>
+                <th className="px-3 py-2.5 text-right font-medium">Response</th>
+                <th className="px-3 py-2.5 text-right font-medium">Uptime 24h</th>
+                <th className="px-3 py-2.5 text-right font-medium">SSL</th>
+                <th className="px-3 py-2.5 text-right font-medium">Checked</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMonitors.map((m) => (
+                <MonitorRow
+                  key={m.id}
+                  monitor={m}
+                  now={now}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(m.id)}
+                  onToggleSelect={toggleSelect}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      <div className="border-t px-4 py-2.5 font-mono text-xs text-muted-foreground">
+        Showing {filteredMonitors.length} of {monitors.length}
+      </div>
 
       {/* Floating action bar */}
       {selectMode && selectedIds.size > 0 && (
@@ -365,18 +463,13 @@ export function MonitorGrid({ monitors, initialStatusFilter = "all" }: MonitorGr
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>
-                {confirmMessages[confirmAction].title}
-              </DialogTitle>
+              <DialogTitle>{confirmMessages[confirmAction].title}</DialogTitle>
               <DialogDescription>
                 {confirmMessages[confirmAction].description}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setConfirmAction(null)}
-              >
+              <Button variant="outline" onClick={() => setConfirmAction(null)}>
                 Cancel
               </Button>
               <Button
@@ -391,6 +484,134 @@ export function MonitorGrid({ monitors, initialStatusFilter = "all" }: MonitorGr
           </DialogContent>
         </Dialog>
       )}
+    </section>
+  );
+}
+
+function MonitorRow({
+  monitor: m,
+  now,
+  selectMode,
+  selected,
+  onToggleSelect,
+}: {
+  monitor: MonitorData;
+  now: number;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
+}) {
+  const status = getMonitorStatus(m);
+  const sslDays = m.sslExpiresAt ? daysUntil(m.sslExpiresAt, now) : null;
+  const failed = m.history.filter((s) => s === "down").length;
+  const checked = m.history.filter((s) => s !== "none").length;
+
+  const nameCell = (
+    <div className="flex min-w-0 max-w-[340px] flex-col gap-0.5">
+      <span className="truncate text-sm font-medium" title={m.name}>
+        {m.name}
+      </span>
+      <span className="truncate font-mono text-[11px] text-muted-foreground" title={m.url}>
+        {m.url}
+      </span>
     </div>
+  );
+
+  return (
+    <tr
+      onClick={selectMode ? () => onToggleSelect(m.id) : undefined}
+      className={cn(
+        "border-b transition-colors last:border-b-0 hover:bg-muted/60",
+        status === "down" && "bg-status-down/5",
+        selectMode && "cursor-pointer",
+        selected && "bg-muted"
+      )}
+    >
+      {selectMode && (
+        <td className="px-3 py-2.5">
+          <Checkbox
+            checked={selected}
+            aria-label={`Select ${m.name}`}
+            onClick={(e) => e.stopPropagation()}
+            onCheckedChange={() => onToggleSelect(m.id)}
+          />
+        </td>
+      )}
+      <td className="whitespace-nowrap px-3 py-2.5">
+        <span
+          className={cn(
+            "inline-flex h-[22px] items-center gap-1.5 rounded-full px-2 font-mono text-[11px] font-medium tracking-wide",
+            STATUS_BADGE[status]
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} />
+          {STATUS_LABEL[status]}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        {selectMode ? (
+          nameCell
+        ) : (
+          <Link href={`/monitors/${m.id}`} className="block hover:underline">
+            {nameCell}
+          </Link>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        <div
+          role="img"
+          aria-label={
+            checked === 0 ? "No checks in the last hour" : `${failed} failed of ${checked} checks`
+          }
+          className="flex h-5 items-center gap-[2px]"
+        >
+          {m.history.map((slot, i) => (
+            <span
+              key={i}
+              className={cn(
+                "w-1 rounded-[1px]",
+                slot === "up" && "h-4 bg-status-up/75",
+                slot === "down" && "h-5 bg-status-down",
+                slot === "none" && "h-4 bg-border"
+              )}
+            />
+          ))}
+        </div>
+      </td>
+      <td
+        className={cn(
+          "whitespace-nowrap px-3 py-2.5 text-right font-mono",
+          m.lastResponseTime != null && m.lastResponseTime > 1000 && "text-status-pending"
+        )}
+      >
+        {status === "paused" || m.lastResponseTime == null
+          ? "—"
+          : `${m.lastResponseTime.toLocaleString()} ms`}
+      </td>
+      <td
+        className={cn(
+          "whitespace-nowrap px-3 py-2.5 text-right font-mono font-medium",
+          m.uptime24h == null && "text-muted-foreground",
+          m.uptime24h != null && m.uptime24h < 99 && "text-status-down",
+          m.uptime24h != null && m.uptime24h >= 99 && m.uptime24h < 99.9 && "text-status-pending"
+        )}
+      >
+        {m.uptime24h == null
+          ? "—"
+          : `${m.uptime24h === 100 ? "100" : m.uptime24h.toFixed(1)}%`}
+      </td>
+      <td
+        className={cn(
+          "whitespace-nowrap px-3 py-2.5 text-right font-mono text-muted-foreground",
+          sslDays != null && sslDays <= 7 && "text-status-down",
+          sslDays != null && sslDays > 7 && sslDays <= SSL_WARNING_DAYS && "text-status-pending"
+        )}
+      >
+        {sslDays == null ? "—" : `${sslDays} d`}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2.5 text-right font-mono text-muted-foreground">
+        {m.lastCheckedAt ? formatAgo(m.lastCheckedAt, now) : "—"}
+      </td>
+    </tr>
   );
 }
